@@ -42,9 +42,13 @@ async def create_blogs(request:Request):
         state["current_language"] = "english"
 
     blog = (state or {}).get("blog", {}) if isinstance(state, dict) else {}
+    translated_title = (state or {}).get("translated_title", "") if isinstance(state, dict) else ""
+    translated_content = (state or {}).get("translated_content", "") if isinstance(state, dict) else ""
     return {
         "title": blog.get("title", ""),
         "content": blog.get("content", ""),
+        "translated_title": translated_title,
+        "translated_content": translated_content,
         "language": (state or {}).get("current_language", language or "english") if isinstance(state, dict) else (language or "english"),
         "raw_state": state,
     }
