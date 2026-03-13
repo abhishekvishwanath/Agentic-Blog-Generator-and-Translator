@@ -8,8 +8,6 @@ from dotenv import load_dotenv
 try:
     load_dotenv()
 except PermissionError:
-    # In some sandboxed runners, reading `.env` can be disallowed.
-    # The app can still run if env vars are provided by the process environment.
     pass
 
 app=FastAPI()
@@ -20,34 +18,38 @@ _langchain_api_key = os.getenv("LANGCHAIN_API_KEY")
 if _langchain_api_key:
     os.environ["LANGSMITH_API_KEY"] = _langchain_api_key
 
-## API's
-
+## API
 @app.post("/blogs")
 async def create_blogs(request:Request):
     
     data=await request.json()
     topic= data.get("topic","")
-    language = data.get("language", '')
+    language = (data.get("language", "") or "").strip().lower()
     print(language)
-
-    ## get the llm object
 
     groqllm=GroqLLM()
     llm=groqllm.get_llm()
 
-    ## get the graph
     graph_builder=GraphBuilder(llm)
-    if topic and language:
+    if topic and language and language != "english":
         graph=graph_builder.setup_graph(usecase="language")
-        state=graph.invoke({"topic":topic,"current_language":language.lower()})
+        state=graph.invoke({"topic":topic,"current_language":language})
 
     elif topic:
         graph=graph_builder.setup_graph(usecase="topic")
         state=graph.invoke({"topic":topic})
-    
+        # Normalize response shape for clients (Postman)
+        state["current_language"] = "english"
 
-    return {"data":state}
+    blog = (state or {}).get("blog", {}) if isinstance(state, dict) else {}
+    return {
+        "title": blog.get("title", ""),
+        "content": blog.get("content", ""),
+        "language": (state or {}).get("current_language", language or "english") if isinstance(state, dict) else (language or "english"),
+        "raw_state": state,
+    }
 
 if __name__=="__main__":
     uvicorn.run("app:app",host="0.0.0.0",port=8000,reload=True)
+    
 

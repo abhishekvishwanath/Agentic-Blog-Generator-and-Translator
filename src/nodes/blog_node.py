@@ -10,32 +10,70 @@ class BlogNode:
     def __init__(self,llm):
         self.llm=llm
 
-    
+    def _extract_title(self, raw_text: str) -> str:
+        """
+        LLMs sometimes return a full blog even when asked for a title.
+        This normalizes to a single-line, human-friendly title.
+        """
+        if not raw_text:
+            return ""
+
+        # Take first non-empty line.
+        lines = [ln.strip() for ln in raw_text.splitlines() if ln.strip()]
+        first = lines[0] if lines else raw_text.strip()
+
+        # Strip common markdown/title wrappers.
+        first = first.lstrip("#").strip()
+        if (first.startswith('"') and first.endswith('"')) or (first.startswith("'") and first.endswith("'")):
+            first = first[1:-1].strip()
+
+        # If model returned "Title: ...", remove the label.
+        lowered = first.lower()
+        if lowered.startswith("title:"):
+            first = first.split(":", 1)[1].strip()
+
+        return first
+
     def title_creation(self,state:BlogState):
         """
         create the title for the blog
         """
 
         if "topic" in state and state["topic"]:
-            prompt="""
-                   You are an expert blog content writer. Use Markdown formatting. Generate
-                   a blog title for the {topic}. This title should be creative and SEO friendly
+            prompt = """
+                   You are an expert blog content writer.
+                   Return ONLY a single blog title for the topic: {topic}
+                   Constraints:
+                   - One line only
+                   - No markdown headings (#), no quotes
+                   - Do NOT include the blog body/content
                    """
             
             sytem_message=prompt.format(topic=state["topic"])
             response=self.llm.invoke(sytem_message)
 
-            return {"blog":{"title":response.content}}
+            title = self._extract_title(getattr(response, "content", "") or str(response))
+            return {"blog": {"title": title}}
         
     def content_generation(self,state:BlogState):
         if "topic" in state and state["topic"]:
             system_prompt = """You are expert blog writer. Use Markdown formatting.
-            Generate a detailed blog content with detailed breakdown for the {topic}"""
+            Generate a detailed blog content with detailed breakdown for the {topic}.
+            IMPORTANT:
+            - Do NOT include a separate title line (title is handled elsewhere)
+            - Start directly with the content sections in markdown
+            """
 
             system_message = system_prompt.format(topic=state["topic"])
             response = self.llm.invoke(system_message)
 
             return {"blog": {"title": state['blog']['title'], "content": response.content}}
+
+    def no_translation(self, state: BlogState):
+        """
+        For English (or unsupported languages), pass-through without translation.
+        """
+        return {"blog": state.get("blog", {})}
         
     def translation(self,state:BlogState):
         """
@@ -60,8 +98,6 @@ class BlogNode:
                 )
             )
         ]
-        # NOTE: Avoid structured-output/tool-calls here; Groq can reject tool calls
-        # depending on the generated JSON. We just need translated markdown text.
         response = self.llm.invoke(messages)
         return {
             "blog": {
@@ -82,5 +118,7 @@ class BlogNode:
             return "hindi"
         elif state["current_language"] == "french": 
             return "french"
+        elif state["current_language"] == "english":
+            return "english"
         else:
-            return state['current_language']
+            return "english"
