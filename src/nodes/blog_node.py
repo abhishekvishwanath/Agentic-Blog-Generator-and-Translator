@@ -35,13 +35,6 @@ class BlogNode:
             response = self.llm.invoke(system_message)
 
             return {"blog": {"title": state['blog']['title'], "content": response.content}}
-    
-    def no_translation(self, state: BlogState):
-        """
-        For English (or unsupported languages), pass-through without translation.
-        Keeps the original (English) blog in state.
-        """
-        return {"blog": state.get("blog", {})}
         
     def translation(self,state:BlogState):
         """
@@ -94,4 +87,5 @@ class BlogNode:
         elif state["current_language"] == "french": 
             return "french"
         else:
-            return state['current_language']
+            # Default to french translation if an unsupported language is provided
+            return "french"
