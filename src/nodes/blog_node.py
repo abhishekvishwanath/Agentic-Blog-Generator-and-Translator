@@ -34,6 +34,42 @@ class BlogNode:
 
         return first
 
+    def _parse_translated_title_content(self, raw_text: str) -> tuple[str, str]:
+        """
+        Expects model output in the format:
+        TITLE: ...
+        CONTENT:
+        ...
+        Falls back gracefully if format isn't followed.
+        """
+        if not raw_text:
+            return "", ""
+
+        text = raw_text.strip()
+        lower = text.lower()
+
+        if "title:" in lower and "content:" in lower:
+            # Find first occurrences (case-insensitive) while slicing original text
+            t_idx = lower.find("title:")
+            c_idx = lower.find("content:")
+            if t_idx != -1 and c_idx != -1 and c_idx > t_idx:
+                title_part = text[t_idx + len("title:") : c_idx].strip()
+                content_part = text[c_idx + len("content:") :].strip()
+                return self._extract_title(title_part), content_part
+
+        # Fallback: use first line as title and the rest as content.
+        lines = [ln.rstrip() for ln in text.splitlines()]
+        first_non_empty = ""
+        first_i = 0
+        for i, ln in enumerate(lines):
+            if ln.strip():
+                first_non_empty = ln.strip()
+                first_i = i
+                break
+        title = self._extract_title(first_non_empty)
+        content = "\n".join(lines[first_i + 1 :]).lstrip() if len(lines) > first_i + 1 else ""
+        return title, content
+
     def title_creation(self,state:BlogState):
         """
         create the title for the blog
@@ -79,30 +115,45 @@ class BlogNode:
         """
         Translate the content to the specified language.
         """
-        translation_prompt="""
-        Translate the following content into {current_language}.
+        translation_prompt = """
+        You are a professional translator.
+        Translate BOTH the blog TITLE and CONTENT into {current_language}.
+
+        Rules:
         - Maintain the original tone, style, and formatting.
         - Adapt cultural references and idioms to be appropriate for {current_language}.
+        - Return output in EXACTLY this format:
+          TITLE: <translated title>
+          CONTENT:
+          <translated content>
+        - Do not add any extra commentary/notes.
+
+        ORIGINAL TITLE:
+        {blog_title}
 
         ORIGINAL CONTENT:
         {blog_content}
-
         """
-        
-        blog_content = state["blog"]["content"]
+
+        blog_title = state.get("blog", {}).get("title", "")
+        blog_content = state.get("blog", {}).get("content", "")
         messages = [
             HumanMessage(
                 translation_prompt.format(
                     current_language=state["current_language"],
+                    blog_title=blog_title,
                     blog_content=blog_content,
                 )
             )
         ]
         response = self.llm.invoke(messages)
+        translated_title, translated_content = self._parse_translated_title_content(
+            getattr(response, "content", "") or str(response)
+        )
         return {
             "blog": {
-                "title": state["blog"].get("title", ""),
-                "content": response.content,
+                "title": translated_title or blog_title,
+                "content": translated_content or (getattr(response, "content", "") or str(response)),
             }
         }
 
