@@ -9,6 +9,23 @@ class BlogNode:
 
     def __init__(self,llm):
         self.llm=llm
+
+    def title_creation(self,state:BlogState):
+        """
+        create the title for the blog
+        """
+
+        if "topic" in state and state["topic"]:
+            prompt="""
+                   You are an expert blog content writer. Use Markdown formatting. Generate
+                   a blog title for the {topic}. This title should be creative and SEO friendly
+                   """
+            
+            sytem_message=prompt.format(topic=state["topic"])
+            response=self.llm.invoke(sytem_message)
+
+            clean_title = self._extract_title(getattr(response, "content", "") or str(response))
+            return {"blog":{"title":clean_title}}
     
     def _extract_title(self, raw_text: str) -> str:
         """
@@ -32,23 +49,6 @@ class BlogNode:
             first = first.split(":", 1)[1].strip()
 
         return first
-
-    def title_creation(self,state:BlogState):
-        """
-        create the title for the blog
-        """
-
-        if "topic" in state and state["topic"]:
-            prompt="""
-                   You are an expert blog content writer. Use Markdown formatting. Generate
-                   a blog title for the {topic}. This title should be creative and SEO friendly
-                   """
-            
-            sytem_message=prompt.format(topic=state["topic"])
-            response=self.llm.invoke(sytem_message)
-
-            clean_title = self._extract_title(getattr(response, "content", "") or str(response))
-            return {"blog":{"title":clean_title}}
         
     def content_generation(self,state:BlogState):
         if "topic" in state and state["topic"]:
